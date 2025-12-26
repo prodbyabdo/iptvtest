@@ -897,6 +897,11 @@
     const Utils = {
       store: (k, v) => localStorage.setItem(k, v),
       read: (k) => localStorage.getItem(k) || '',
+      // XSS Protection - sanitize untrusted strings
+      esc: (str) => {
+        if (!str) return '';
+        return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      },
       toast: (msg, type = 'info') => {
         const t = document.getElementById('toast');
         t.innerText = msg;
@@ -1205,7 +1210,7 @@
       createCatBtn(cat, isActive = false) {
         const div = document.createElement('button');
         div.className = `category-btn ${isActive ? 'active' : ''}`;
-        div.innerHTML = `<span>${cat.category_name}</span>`;
+        div.innerHTML = `<span>${Utils.esc(cat.category_name)}</span>`;
         if (isActive) this.activeCategoryBtn = div;
 
         div.onclick = () => {
@@ -1250,12 +1255,12 @@
               <button class="item-btn" data-action="copy" title="Copy Link">📋</button>
               <button class="item-btn" data-action="download" title="Download">⬇️</button>
             </div>
-            <img class="media-poster" src="${img}" loading="lazy" onerror="this.src='https://via.placeholder.com/300?text=Icon'">
+            <img class="media-poster" src="${Utils.esc(img)}" loading="lazy" onerror="this.src='https://via.placeholder.com/300?text=Icon'">
             <div class="media-overlay">
-              <div class="media-title">${item.name || item.title}</div>
+              <div class="media-title">${Utils.esc(item.name || item.title)}</div>
               <div class="media-meta">
-                <span>${item.year || ''}</span>
-                <span class="rating-badge">★ ${item.rating || ''}</span>
+                <span>${Utils.esc(item.year || '')}</span>
+                <span class="rating-badge">★ ${Utils.esc(item.rating || '')}</span>
               </div>
             </div>
           `;
