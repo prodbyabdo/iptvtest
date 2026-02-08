@@ -22,3 +22,11 @@ node_modules/
 *.bak
 
 iptv.txt
+
+# Compiled outputs
+*.exe
+*.o
+*.obj
+
+# Untitled/scratch files
+Untitled-*
