@@ -7,11 +7,32 @@ import threading
 import time
 import requests
 import xml.etree.ElementTree as ET
+import os  # Added for path handling
 from urllib.parse import urlparse
+
+# Set directory to where the script is located
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Configuration
 PORT = 8000
 DIRECTORY = "."
+FOOTBALL_API_KEY = os.environ.get("FOOTBALL_API_KEY", "")
+
+# Allowed domains for the proxy endpoint (SSRF protection)
+PROXY_ALLOWED_DOMAINS = [
+    "api.football-data.org",
+    "www.omdbapi.com",
+    "www.thesportsdb.com",
+    "thesportsdb.com",
+    "crests.football-data.org",
+]
+
+# CORS: restrict to localhost origins
+ALLOWED_ORIGINS = [
+    f"http://localhost:{PORT}",
+    f"http://127.0.0.1:{PORT}",
+    "null",  # file:// protocol sends Origin: null
+]
 
 class ScanDelegate:
     def __init__(self):
@@ -262,63 +283,105 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _get_cors_origin(self):
+        """Return the request Origin if it's in the allowlist, else the first allowed origin."""
+        origin = self.headers.get('Origin', '')
+        if origin in ALLOWED_ORIGINS:
+            return origin
+        return ALLOWED_ORIGINS[0]
+
     def do_GET(self):
         if self.path.startswith('/proxy'):
-            # Simple proxy to bypass CORS for images
+            # Proxy with SSRF protection — only allowed domains
             # Usage: /proxy?url=HTTP_URL
             query = urlparse(self.path).query
             if 'url=' in query:
                 target_url = query.split('url=', 1)[1]
-                # Decode
                 from urllib.parse import unquote
-                target_url = unquote(target_url) 
+                target_url = unquote(target_url)
+                
+                # SSRF protection: validate target domain
+                try:
+                    parsed_target = urlparse(target_url)
+                    if parsed_target.hostname not in PROXY_ALLOWED_DOMAINS:
+                        print(f"Proxy blocked (domain not allowed): {parsed_target.hostname}")
+                        self.send_error(403, "Domain not allowed")
+                        return
+                except Exception:
+                    self.send_error(400, "Invalid URL")
+                    return
                 
                 try:
-                    # Fetch external resource
-                    # STREAMING is critical here
                     print(f"Proxying request for: {target_url}")
                     resp = requests.get(target_url, stream=True, timeout=10)
                     self.send_response(resp.status_code)
-                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
                     content_type = resp.headers.get('Content-Type')
                     if content_type:
                         self.send_header('Content-Type', content_type)
                     self.end_headers()
-                    # Stream back
                     for chunk in resp.iter_content(chunk_size=65536):
                          if not chunk: break
                          self.wfile.write(chunk)
                 except Exception as e:
                     print(f"Proxy error: {e}")
-                    # Only send error if headers haven't been sent yet? 
-                    # Hard to know status, just log it.
             else:
                 self.send_error(400)
             return
             
+        if self.path.startswith('/api/football/'):
+            # Proxy for Football-Data.org
+            # Usage: /api/football/competitions/PL/matches?headers=...
+            # We need to forward the X-Auth-Token header from the client or use a server-side one if we had it.
+            # Client sends request to: /api/football/competitions/PL/matches
+            # We fetch: https://api.football-data.org/v4/competitions/PL/matches
+            
+            endpoint = self.path.replace('/api/football/', '')
+            url = f'https://api.football-data.org/v4/{endpoint}'
+            
+            # Forward the auth token if provided by the client, else use server config
+            client_token = self.headers.get('X-Auth-Token')
+            token_to_use = client_token if client_token else FOOTBALL_API_KEY
+            
+            headers = { 'X-Auth-Token': token_to_use }
+            
+            print(f"Proxying Football Data: {url}")
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                self.send_response(resp.status_code)
+                self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(resp.content)
+            except Exception as e:
+                print(f"Football Proxy Error: {e}")
+                self.send_error(500, str(e))
+            return
+
         # Default behavior for other files
         super().do_GET()
 
     def send_json(self, data):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
         
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token')
         self.end_headers()
 
 class ThreadingSimpleServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     pass
 
 print(f"Starting server at http://localhost:{PORT}")
-print("Run `iptv-pro-player_cast.html` in your browser from this server:")
-print(f"http://localhost:{PORT}/iptv-pro-player_cast.html")
+print(f"Serving files from: {os.getcwd()}")
+print("Run `iptv-pro-player.html` in your browser from this server:")
+print(f"http://localhost:{PORT}/iptv-pro-player.html")
 
 # UPDATED: Use ThreadingSimpleServer to handle multiple requests (proxy + serving + api) at once
 httpd = ThreadingSimpleServer(("", PORT), PlayerHandler)

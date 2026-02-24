@@ -15,9 +15,7 @@ function createWindow() {
         icon: path.join(__dirname, 'icon.png'),
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true,
-            // Disable web security to avoid CORS issues with IPTV APIs
-            webSecurity: false
+            contextIsolation: true
         },
         // Modern look
         backgroundColor: '#0f172a',

@@ -12,14 +12,11 @@ Feature ideas inspired by Netflix, DAZN, ESPN+, and other premium streaming plat
 - [ ] Sync across browser sessions (localStorage)
 
 ### Enhanced UI/UX
-- [ ] **Top 10 Trending** carousel with animated rankings
-- [ ] **Preview on Hover** - auto-play trailer/clip thumbnails
 - [ ] **Skip Intro** button detection for series
 - [ ] **"More Like This"** recommendations based on genre/tags
 - [ ] **Profile Avatars** - multiple user profiles with separate watch history
 
 ### Discovery Features
-- [ ] **Categories with Moods** - "Exciting", "Feel-Good", "Suspenseful"
 - [ ] **Because You Watched...** - smart recommendations
 - [ ] **New Releases** section with countdown badges
 - [ ] **My List** - save items to personal watchlist
@@ -27,7 +24,6 @@ Feature ideas inspired by Netflix, DAZN, ESPN+, and other premium streaming plat
 
 ### Playback Enhancements
 - [ ] **Ambient Mode** - screen edges glow with video colors
-- [ ] **Speed Controls** - 0.5x, 1x, 1.25x, 1.5x, 2x
 - [ ] **Audio Descriptions** toggle
 - [ ] **Subtitle Styling** - font, size, background customization
 
@@ -55,8 +51,6 @@ Feature ideas inspired by Netflix, DAZN, ESPN+, and other premium streaming plat
 
 ### Second Screen Features
 - [ ] **Companion Stats View** - detailed match stats on mobile
-- [ ] **Live Chat/Reactions** during matches
-- [ ] **Predictions & Polls** - guess the score
 
 ---
 
