@@ -353,22 +353,22 @@
 
         <nav class="nav-menu" id="leagueNav">
           <div class="menu-header">Top Leagues</div>
-          <button class="nav-item active" onclick="app.loadCompetition('PL')">
+          <button class="nav-item active" onclick="app.loadCompetition('premierleague')">
             <img src="https://crests.football-data.org/PL.png" onerror="this.style.display='none'"> Premier League
           </button>
-          <button class="nav-item" onclick="app.loadCompetition('PD')">
+          <button class="nav-item" onclick="app.loadCompetition('laliga')">
             <img src="https://crests.football-data.org/PD.png" onerror="this.style.display='none'"> La Liga
           </button>
-          <button class="nav-item" onclick="app.loadCompetition('BL1')">
+          <button class="nav-item" onclick="app.loadCompetition('bundesliga')">
              <img src="https://crests.football-data.org/BL1.png" onerror="this.style.display='none'"> Bundesliga
           </button>
-          <button class="nav-item" onclick="app.loadCompetition('SA')">
+          <button class="nav-item" onclick="app.loadCompetition('seriea')">
              <img src="https://crests.football-data.org/SA.png" onerror="this.style.display='none'"> Serie A
           </button>
-          <button class="nav-item" onclick="app.loadCompetition('FL1')">
+          <button class="nav-item" onclick="app.loadCompetition('ligue1ubereats')">
              <img src="https://crests.football-data.org/FL1.png" onerror="this.style.display='none'"> Ligue 1
           </button>
-          <button class="nav-item" onclick="app.loadCompetition('CL')">
+          <button class="nav-item" onclick="app.loadCompetition('championsleague')">
              <img src="https://crests.football-data.org/CL.png" onerror="this.style.display='none'"> Champions League
           </button>
         </nav>
@@ -395,7 +395,7 @@
 
     <script>
       // API CONFIG
-      const API_BASE = '/api/football'; // Proxy
+      const API_BASE = 'http://localhost:8000/api/football'; // Fully qualified local proxy
       const CACHE_KEY = 'iptv_sports_data';
       
       // Utils
@@ -439,7 +439,7 @@
                 // Try to warn user? For now assume it might work via server key if implemented
                 console.warn("No Football API Key found in settings");
             }
-            this.loadCompetition('PL');
+            this.loadCompetition('premierleague');
         }
 
         async loadCompetition(code) {
@@ -447,8 +447,8 @@
             
             // Update Title
             const map = {
-                'PL': 'Premier League', 'PD': 'La Liga', 'BL1': 'Bundesliga', 
-                'SA': 'Serie A', 'FL1': 'Ligue 1', 'CL': 'Champions League'
+                'premierleague': 'Premier League', 'laliga': 'La Liga', 'bundesliga': 'Bundesliga', 
+                'seriea': 'Serie A', 'ligue1ubereats': 'Ligue 1', 'championsleague': 'Champions League'
             };
             document.getElementById('pageTitle').innerText = map[code] || code;
 
@@ -474,14 +474,13 @@
 
             try {
                 if (this.currentTab === 'matches') {
-                    const data = await this.fetchData(`/competitions/${this.currentComp}/matches`);
-                    // Filter for recent/upcoming (last 7 days, next 7 days)
-                    // For demo, just show all or slice
-                    const matches = this.filterMatches(data.matches);
+                    const data = await this.fetchData(`/${this.currentComp}/fixtures/`);
+                    // Use the response field from RapidAPI
+                    const matches = this.filterMatches(data.response || []);
                     this.renderMatches(matches);
                 } else {
-                    const data = await this.fetchData(`/competitions/${this.currentComp}/standings`);
-                    this.renderStandings(data.standings[0].table);
+                    const data = await this.fetchData(`/${this.currentComp}/table`);
+                    this.renderStandings(data.response || []);
                 }
             } catch (err) {
                 container.innerHTML = `<div class="loading" style="color:var(--error)">Error: ${err.message}<br><small>Check if server.py is running and API Key is set.</small></div>`;
@@ -503,28 +502,32 @@
             container.innerHTML = '<div class="match-grid"></div>';
             const grid = container.querySelector('.match-grid');
 
-            matches.forEach(m => {
-                const isLive = m.status === 'IN_PLAY' || m.status === 'PAUSED';
-                const date = new Date(m.utcDate).toLocaleDateString() + ' ' + Utils.formatDate(m.utcDate);
+            matches.forEach(item => {
+                const m = item.fixture || item; // Handle RapidAPI structure
+                const teams = item.teams || m.teams;
+                const goals = item.goals || m.goals;
+                
+                const isLive = m.status.short === 'LIVE' || m.status.short === '1H' || m.status.short === '2H';
+                const date = new Date(m.date || m.utcDate).toLocaleDateString() + ' ' + Utils.formatDate(m.date || m.utcDate);
                 
                 const card = document.createElement('div');
                 card.className = 'match-card';
                 card.innerHTML = `
-                   <div class="match-status ${isLive ? 'live' : ''}">${isLive ? 'LIVE' : m.status}</div>
+                   <div class="match-status ${isLive ? 'live' : ''}">${isLive ? 'LIVE' : m.status.short || m.status}</div>
                    <div class="match-time">${date}</div>
                    <div class="teams">
                       <div class="team">
-                         <img src="${m.homeTeam.crest}" alt="${m.homeTeam.name}">
-                         <div class="team-name">${m.homeTeam.shortName || m.homeTeam.name}</div>
+                         <img src="${teams.home.logo || teams.home.crest}" alt="${teams.home.name}">
+                         <div class="team-name">${teams.home.name}</div>
                       </div>
                       <div class="score-board">
                          <div class="score">
-                            ${m.score.fullTime.home ?? '-'} : ${m.score.fullTime.away ?? '-'}
+                            ${goals.home ?? '-'} : ${goals.away ?? '-'}
                          </div>
                       </div>
                       <div class="team">
-                         <img src="${m.awayTeam.crest}" alt="${m.awayTeam.name}">
-                         <div class="team-name">${m.awayTeam.shortName || m.awayTeam.name}</div>
+                         <img src="${teams.away.logo || teams.away.crest}" alt="${teams.away.name}">
+                         <div class="team-name">${teams.away.name}</div>
                       </div>
                    </div>
                 `;
@@ -553,21 +556,22 @@
              `;
              
              table.forEach(row => {
+                 const team = row.team || row;
                  html += `
                     <tr>
-                       <td>${row.position}</td>
+                       <td>${row.rank || row.position}</td>
                        <td>
                           <div class="table-team">
-                             <img src="${row.team.crest}">
-                             <span>${row.team.shortName || row.team.name}</span>
+                             <img src="${team.logo || team.crest}">
+                             <span>${team.name || team.shortName}</span>
                           </div>
                        </td>
-                       <td>${row.playedGames}</td>
-                       <td>${row.won}</td>
-                       <td>${row.draw}</td>
-                       <td>${row.lost}</td>
-                       <td>${row.goalsFor}</td>
-                       <td>${row.goalsAgainst}</td>
+                       <td>${row.all?.played || row.playedGames}</td>
+                       <td>${row.all?.win || row.won}</td>
+                       <td>${row.all?.draw || row.draw}</td>
+                       <td>${row.all?.lose || row.lost}</td>
+                       <td>${row.all?.goals?.for || row.goalsFor}</td>
+                       <td>${row.all?.goals?.against || row.goalsAgainst}</td>
                        <td style="font-weight:700; color:var(--success)">${row.points}</td>
                     </tr>
                  `;

@@ -14,6 +14,8 @@ for %%f in (
   "iptv-pro-player.html"
   "football-api.js"
   "omdb-api.js"
+  "server.py"
+  "RUN_IPTV.bat"
   "README.md"
   "API_REFERENCE.md"
 ) do (
@@ -32,22 +34,12 @@ echo ==================================================
 if !missing! equ 0 (
   echo.   Status: OK - All files found!
   echo.
-  echo   Next Steps:
-  echo.   1. Double-click iptv-pro-player.html to open in browser
-  echo.   2. Click Settings (⚙️ icon in top-right)
-  echo.   3. Enter your IPTV credentials:
-  echo.      - Server URL (e.g., http://vipxtv.net:80)
-  echo.      - Username
-  echo.      - Password
-  echo.   4. Enter your API keys:
-  echo.      - Football API Key (from RapidAPI)
-  echo.      - OMDb API Key (from omdbapi.com)
-  echo.   5. Click "Save Settings"
-  echo.   6. Refresh the page (Ctrl+R)
-  echo.   7. Start streaming!
+  echo.   Next Steps:
+  echo.   1. START THE APP: Run RUN_IPTV.bat (Recommended)
+  echo.   2. Enter your IPTV credentials in the settings (⚙️ icon).
+  echo.   3. Save and enjoy!
   echo.
-  echo   For detailed setup, see: README.md
-  echo.   For API details, see: API_REFERENCE.md
+  echo   The backend server is REQUIRED for secure streaming.
 ) else (
   echo.   Status: ERROR - Missing !missing! file(s)
   echo.

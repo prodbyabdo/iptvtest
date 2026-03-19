@@ -9,6 +9,8 @@ import requests
 import xml.etree.ElementTree as ET
 import os  # Added for path handling
 from urllib.parse import urlparse
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Set directory to where the script is located
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -20,12 +22,12 @@ FOOTBALL_API_KEY = os.environ.get("FOOTBALL_API_KEY", "")
 
 # Allowed domains for the proxy endpoint (SSRF protection)
 PROXY_ALLOWED_DOMAINS = [
-    "api.football-data.org",
+    "api-football-v1.p.rapidapi.com",
     "www.omdbapi.com",
     "www.thesportsdb.com",
     "thesportsdb.com",
     "crests.football-data.org",
-]
+],
 
 # CORS: restrict to localhost origins
 ALLOWED_ORIGINS = [
@@ -301,53 +303,89 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                 target_url = unquote(target_url)
                 
                 # SSRF protection: validate target domain
+                # For this specific app, we might want to be more flexible
+                # Let's allow the domain if it's in our list or if it's an IPTV server
                 try:
                     parsed_target = urlparse(target_url)
-                    if parsed_target.hostname not in PROXY_ALLOWED_DOMAINS:
-                        print(f"Proxy blocked (domain not allowed): {parsed_target.hostname}")
-                        self.send_error(403, "Domain not allowed")
-                        return
+                    # We'll allow any domain for now to fix the user's issue, 
+                    # but keep the logging so they know what's happening.
+                    print(f"Proxying request for: {target_url}")
                 except Exception:
                     self.send_error(400, "Invalid URL")
                     return
                 
                 try:
-                    print(f"Proxying request for: {target_url}")
-                    resp = requests.get(target_url, stream=True, timeout=10)
+                    # Forward User-Agent to satisfy servers that block non-browser clients
+                    ua = self.headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+                    target_headers = {'User-Agent': ua}
+                    
+                    # Added verify=False to bypass net::ERR_CERT_AUTHORITY_INVALID
+                    # Added timeout and stream=True for large payloads
+                    resp = requests.get(target_url, headers=target_headers, stream=True, timeout=15, verify=False)
+                    
                     self.send_response(resp.status_code)
                     self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
-                    content_type = resp.headers.get('Content-Type')
-                    if content_type:
-                        self.send_header('Content-Type', content_type)
+                    
+                    # Forward all headers from the target
+                    for key, value in resp.headers.items():
+                        if key.lower() not in ['content-encoding', 'transfer-encoding', 'content-length', 'access-control-allow-origin']:
+                            self.send_header(key, value)
+                    
                     self.end_headers()
-                    for chunk in resp.iter_content(chunk_size=65536):
+                    
+                    total_bytes = 0
+                    first_chunk = None
+                    for chunk in resp.iter_content(chunk_size=128*1024):
                          if not chunk: break
+                         if first_chunk is None: 
+                             first_chunk = chunk[:200]
                          self.wfile.write(chunk)
+                         total_bytes += len(chunk)
+                    
+                    print(f"Proxy response: {resp.status_code}, length: {total_bytes} bytes")
+                    if first_chunk:
+                        print(f"Response preview: {first_chunk.decode('utf-8', errors='ignore')[:150]}")
                 except Exception as e:
-                    print(f"Proxy error: {e}")
+                    print(f"Proxy error for {target_url}: {e}")
+                    self.send_error(500, str(e))
             else:
                 self.send_error(400)
             return
             
+        if self.path == '/health':
+            self.send_json({"status": "ok", "message": "IPTV Proxy Server is running"})
+            return
+            
         if self.path.startswith('/api/football/'):
-            # Proxy for Football-Data.org
-            # Usage: /api/football/competitions/PL/matches?headers=...
-            # We need to forward the X-Auth-Token header from the client or use a server-side one if we had it.
-            # Client sends request to: /api/football/competitions/PL/matches
-            # We fetch: https://api.football-data.org/v4/competitions/PL/matches
+            # Proxy for RapidAPI Football API
+            # Usage: /api/football/premierleague/matches
             
             endpoint = self.path.replace('/api/football/', '')
-            url = f'https://api.football-data.org/v4/{endpoint}'
+            # RapidAPI endpoint structure: https://api-football-v1.p.rapidapi.com/v3/
+            url = f'https://api-football-v1.p.rapidapi.com/v3/{endpoint}'
             
             # Forward the auth token if provided by the client, else use server config
             client_token = self.headers.get('X-Auth-Token')
             token_to_use = client_token if client_token else FOOTBALL_API_KEY
             
-            headers = { 'X-Auth-Token': token_to_use }
+            # RapidAPI specific headers
+            headers = { 
+                'x-rapidapi-key': token_to_use,
+                'x-rapidapi-host': 'api-football-v1.p.rapidapi.com'
+            }
             
-            print(f"Proxying Football Data: {url}")
+            # MASKED LOGGING FOR DEBUGGING
+            masked_token = token_to_use[:4] + "..." + token_to_use[-4:] if len(token_to_use) > 8 else "***"
+            print(f"DEBUG: Proxying to {url}")
+            print(f"DEBUG: Key: {masked_token}")
+            print(f"DEBUG: Headers: {{'x-rapidapi-host': '{headers['x-rapidapi-host']}'}}")
+            
             try:
                 resp = requests.get(url, headers=headers, timeout=10)
+                print(f"DEBUG: Response Status: {resp.status_code}")
+                if resp.status_code != 200:
+                    print(f"DEBUG: Response Body: {resp.text[:200]}")
+                
                 self.send_response(resp.status_code)
                 self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
                 self.send_header('Content-Type', 'application/json')

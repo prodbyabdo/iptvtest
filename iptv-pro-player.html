@@ -6,7 +6,7 @@
     <title>IPTV Player Pro | Premium Experience</title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' http: https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' http: https: data: blob:; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'self';"
+      content="default-src 'self' http: https:; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' http: https: data: blob:; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'self';"
     />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1202,6 +1202,23 @@
   </head>
 
   <body>
+    <!-- Loading Overlay -->
+    <section id="loadingOverlay" style="display:none; position:fixed; inset:0; z-index:4000; background:rgba(0,0,0,0.97); flex-direction:column; align-items:center; justify-content:center; font-family:var(--font-mono);">
+      <div style="width:400px; text-align:center;">
+        <div style="font-size:40px; margin-bottom:20px;">📡</div>
+        <h2 id="loadingTitle" style="color:var(--text-main); font-family:var(--font-display); font-size:22px; margin-bottom:8px;">Connecting to Server...</h2>
+        <p id="loadingStatus" style="color:var(--text-secondary); font-size:12px; margin-bottom:24px;">Initializing...</p>
+        <div style="background:#111; border:1px solid var(--border-light); border-radius:2px; height:6px; width:100%; overflow:hidden; margin-bottom:16px;">
+          <div id="loadingBar" style="height:100%; width:0%; background:linear-gradient(90deg, var(--success), #00cc7d); transition:width 0.4s ease; box-shadow:0 0 8px rgba(0,255,157,0.4);"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted);">
+          <span id="step-live" style="opacity:0.3;">◻ Live TV</span>
+          <span id="step-movies" style="opacity:0.3;">◻ Movies</span>
+          <span id="step-series" style="opacity:0.3;">◻ Series</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Login Page -->
     <section class="login-container" id="loginPage">
       <div class="login-card">
@@ -1532,6 +1549,9 @@
         pass: Utils.read("xtream_pass"),
         fbKey: Utils.read("football_api_key"),
         omdbKey: Utils.read("omdb_api_key"),
+        proxyUrl: "http://localhost:8000",
+        useProxy: false,
+        _proxyChecked: false
       };
 
       // --- IndexedDB Cache ---
@@ -1592,16 +1612,38 @@
         }
       }
 
-      // --- XTREAM API ---
       class XtreamClient {
         constructor() {
-          this.baseUrl = () =>
-            `${Config.url.replace(/\/$/, "")}/player_api.php`;
+          this.baseUrl = () => {
+            let url = Config.url.trim().replace(/\/$/, "");
+            if (url.includes('player_api.php')) return url;
+            return `${url}/player_api.php`;
+          };
           this.cache = new DataCache();
+        }
+
+        async checkProxy() {
+          Config._proxyChecked = true;
+          try {
+            const ctrl = new AbortController();
+            setTimeout(() => ctrl.abort(), 3000);
+            const res = await fetch(`${Config.proxyUrl}/health`, { mode:'cors', signal:ctrl.signal });
+            if (res.ok) {
+              Config.useProxy = true;
+              Utils.log("Local Proxy Server detected! CORS and SSL issues bypassed.", "success");
+              return true;
+            }
+          } catch (e) {
+            console.warn("Local Proxy Server not detected.");
+          }
+          return false;
         }
 
         async fetch(action, params = {}, cacheKey = null) {
           if (!Config.url || !Config.user) return null;
+
+          // Check proxy once
+          if (!Config.useProxy && !Config._proxyChecked) await this.checkProxy();
 
           // Try cache first
           if (cacheKey) {
@@ -1619,37 +1661,64 @@
             ...params,
           });
 
-          // Ensure URL is valid
           let baseUrl = this.baseUrl();
           if (!baseUrl.startsWith("http")) baseUrl = "http://" + baseUrl;
 
-          console.log("Fetching:", `${baseUrl}?${q}`);
+          // Build URL list: primary + HTTP fallback if HTTPS
+          const urlsToTry = [`${baseUrl}?${q}`];
+          if (baseUrl.startsWith("https://")) {
+            const httpUrl = baseUrl.replace("https://", "http://");
+            const hasPort = httpUrl.split('/')[2].includes(':');
+            if (!hasPort) urlsToTry.push(`${httpUrl.replace('/player_api.php', ':80/player_api.php')}?${q}`);
+            urlsToTry.push(`${httpUrl}?${q}`);
+          }
 
-          try {
-            const res = await fetch(`${baseUrl}?${q}`);
-            if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-            const data = await res.json();
+          for (let i = 0; i < urlsToTry.length; i++) {
+            let rawUrl = urlsToTry[i];
+            let fetchUrl = Config.useProxy
+              ? `${Config.proxyUrl}/proxy?url=${encodeURIComponent(rawUrl)}`
+              : rawUrl;
 
-            // Store in cache
-            if (cacheKey && Array.isArray(data) && data.length > 0) {
-              await this.cache.set(cacheKey, data);
-              console.log("Cached:", cacheKey);
+            console.log(`Fetching (attempt ${i+1}/${urlsToTry.length}):`, rawUrl);
+
+            try {
+              const res = await fetch(fetchUrl);
+              if (!res.ok) {
+                if (res.status === 404 && i < urlsToTry.length - 1) {
+                  Utils.log(`404 on attempt ${i+1}, trying fallback...`, 'warning');
+                  continue;
+                }
+                throw new Error(`HTTP Error: ${res.status}`);
+              }
+              const data = await res.json();
+
+              // If fallback worked, save the working URL
+              if (i > 0) {
+                const workedUrl = rawUrl.split('/player_api.php')[0];
+                Utils.log(`Switching to working URL: ${workedUrl}`, 'success');
+                Config.url = workedUrl;
+                Utils.store('xtream_url', workedUrl);
+              }
+
+              if (cacheKey && Array.isArray(data) && data.length > 0) {
+                await this.cache.set(cacheKey, data);
+                console.log("Cached:", cacheKey);
+              }
+              return data;
+            } catch (e) {
+              if (i < urlsToTry.length - 1) { continue; }
+              console.error(e);
+              if (e.message.includes("Failed to fetch")) {
+                Utils.toast("Connection Failed. Check URL or CORS.", "error");
+              } else {
+                Utils.toast("API Error: " + e.message, "error");
+              }
+              return null;
             }
-
-            return data;
-          } catch (e) {
-            console.error(e);
-            if (e.message.includes("Failed to fetch")) {
-              Utils.toast("Connection Failed. Check URL or CORS.", "error");
-            } else {
-              Utils.toast("API Error: " + e.message, "error");
-            }
-            return null;
           }
         }
 
         async getCategories(type = "live") {
-          // FIXED: movies uses get_vod_categories
           const map = {
             live: "get_live_categories",
             movies: "get_vod_categories",
@@ -1683,18 +1752,20 @@
         constructEpisodeUrl(episodeId, ext = "mkv") {
           let base = Config.url.replace(/\/$/, "");
           if (!base.startsWith("http")) base = "http://" + base;
-          return `${base}/series/${Config.user}/${Config.pass}/${episodeId}.${ext}`;
+          let url = `${base}/series/${Config.user}/${Config.pass}/${episodeId}.${ext}`;
+          if (Config.useProxy) url = `${Config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+          return url;
         }
 
         constructStreamUrl(id, type) {
           let base = Config.url.replace(/\/$/, "");
           if (!base.startsWith("http")) base = "http://" + base;
-
-          if (type === "live")
-            return `${base}/live/${Config.user}/${Config.pass}/${id}.m3u8`;
-          if (type === "movies")
-            return `${base}/movie/${Config.user}/${Config.pass}/${id}.mkv`;
-          return `${base}/series/${Config.user}/${Config.pass}/${id}.mkv`;
+          let url;
+          if (type === "live") url = `${base}/live/${Config.user}/${Config.pass}/${id}.m3u8`;
+          else if (type === "movies") url = `${base}/movie/${Config.user}/${Config.pass}/${id}.mkv`;
+          else url = `${base}/series/${Config.user}/${Config.pass}/${id}.mkv`;
+          if (Config.useProxy) url = `${Config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+          return url;
         }
 
         static async testConnection(url, user, pass) {
@@ -1707,26 +1778,24 @@
             action: "get_live_categories",
           });
 
+          let fetchUrl = `${cleanUrl}/player_api.php?${q}`;
+          if (Config.useProxy) fetchUrl = `${Config.proxyUrl}/proxy?url=${encodeURIComponent(fetchUrl)}`;
+
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-            const res = await fetch(`${cleanUrl}/player_api.php?${q}`, {
-              signal: controller.signal,
-            });
+            const res = await fetch(fetchUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
-
             if (!res.ok) {
-                 Utils.log(`HTTP Error: ${res.status} ${res.statusText}`, 'error');
-                 return { success: false, msg: `HTTP ${res.status}` };
+              Utils.log(`HTTP Error: ${res.status} ${res.statusText}`, 'error');
+              return { success: false, msg: `HTTP ${res.status}` };
             }
             Utils.log('API Response received. Parsing JSON...');
             await res.json();
             Utils.log('Connection Verified!', 'success');
             return { success: true };
           } catch (e) {
-            if (e.name === "AbortError")
-              return { success: false, msg: "Timeout" };
+            if (e.name === "AbortError") return { success: false, msg: "Timeout" };
             return { success: false, msg: e.message };
           }
         }
@@ -1739,18 +1808,14 @@
         }
 
         async getLive() {
-          if (!Config.fbKey) return []; // Silent fail if no key
-
+          if (!Config.fbKey) return [];
           try {
-            const res = await fetch(
-              `https://${this.host}/v3/fixtures?live=all`,
-              {
-                headers: {
-                  "x-rapidapi-key": Config.fbKey,
-                  "x-rapidapi-host": this.host,
-                },
-              },
-            );
+            let url = `https://${this.host}/v3/fixtures?live=all`;
+            let headers = { "x-rapidapi-key": Config.fbKey, "x-rapidapi-host": this.host };
+            if (Config.useProxy) {
+              url = `${Config.proxyUrl}/api/football/fixtures?live=all`;
+            }
+            const res = await fetch(url, { headers });
             const data = await res.json();
             return data.response || [];
           } catch {
@@ -1764,9 +1829,9 @@
         async get(title, year) {
           if (!Config.omdbKey) return null;
           try {
-            const res = await fetch(
-              `https://www.omdbapi.com/?apikey=${Config.omdbKey}&t=${encodeURIComponent(title)}&y=${year || ""}`,
-            );
+            let url = `https://www.omdbapi.com/?apikey=${Config.omdbKey}&t=${encodeURIComponent(title)}&y=${year || ""}`;
+            if (Config.useProxy) url = `${Config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+            const res = await fetch(url);
             const data = await res.json();
             return data.Response === "True" ? data : null;
           } catch {
@@ -1829,7 +1894,59 @@
         showApp() {
           this.els.loginPage.classList.add("hidden");
           this.els.mainApp.classList.remove("hidden");
-          this.loadCategories("live");
+          this.prefetchAll();
+        }
+
+        async prefetchAll() {
+          const overlay = document.getElementById('loadingOverlay');
+          const bar = document.getElementById('loadingBar');
+          const title = document.getElementById('loadingTitle');
+          const status = document.getElementById('loadingStatus');
+          overlay.style.display = 'flex';
+
+          const flush = () => new Promise(r => setTimeout(r, 50));
+
+          // Check proxy first
+          title.textContent = 'Checking server...';
+          status.textContent = 'Detecting local proxy...';
+          await flush();
+          await this.api.checkProxy();
+          await flush();
+
+          const steps = [
+            { type: 'live',   label: 'Live TV',  stepId: 'step-live' },
+            { type: 'movies', label: 'Movies',   stepId: 'step-movies' },
+            { type: 'series', label: 'Series',   stepId: 'step-series' },
+          ];
+
+          for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
+            bar.style.width = Math.round((i / steps.length) * 100) + '%';
+            title.textContent = `Downloading ${step.label}...`;
+            status.textContent = `Step ${i + 1} of ${steps.length}`;
+            const stepEl = document.getElementById(step.stepId);
+            stepEl.style.opacity = '1';
+            stepEl.style.color = 'var(--success)';
+            stepEl.textContent = `◼ ${step.label}`;
+            await flush();
+
+            try {
+              await this.api.getCategories(step.type);
+              stepEl.textContent = `✓ ${step.label}`;
+            } catch (e) {
+              console.error(`Failed to load ${step.label}:`, e);
+              stepEl.textContent = `✗ ${step.label}`;
+              stepEl.style.color = 'var(--error)';
+            }
+            await flush();
+          }
+
+          bar.style.width = '100%';
+          title.textContent = 'Ready!';
+          status.textContent = 'All playlists loaded.';
+          await new Promise(r => setTimeout(r, 500));
+          overlay.style.display = 'none';
+          this.loadCategories('live');
         }
 
         bindEvents() {
