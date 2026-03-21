@@ -325,10 +325,11 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                     
                     self.send_response(resp.status_code)
                     self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
+                    self.send_header('Transfer-Encoding', 'chunked')
                     
                     # Forward all headers from the target
                     for key, value in resp.headers.items():
-                        if key.lower() not in ['content-encoding', 'transfer-encoding', 'content-length', 'access-control-allow-origin']:
+                        if key.lower() not in ['content-encoding', 'transfer-encoding', 'content-length', 'access-control-allow-origin', 'connection']:
                             self.send_header(key, value)
                     
                     self.end_headers()
@@ -339,8 +340,12 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                          if not chunk: break
                          if first_chunk is None: 
                              first_chunk = chunk[:200]
+                         self.wfile.write(b"%X\r\n" % len(chunk))
                          self.wfile.write(chunk)
+                         self.wfile.write(b"\r\n")
                          total_bytes += len(chunk)
+                    
+                    self.wfile.write(b"0\r\n\r\n")
                     
                     print(f"Proxy response: {resp.status_code}, length: {total_bytes} bytes")
                     if first_chunk:

@@ -23,7 +23,9 @@
         "files": [
             "main.js",
             "iptv-pro-player.html",
-            "preload.js",
+            "sports-center.html",
+            "football-api.js",
+            "omdb-api.js",
             "icon.png"
         ],
         "win": {

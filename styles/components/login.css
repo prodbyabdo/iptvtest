@@ -1,0 +1,104 @@
+/* ========================= LOGIN PAGE ========================= */
+.login-container {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-dark);
+  background-image:
+    linear-gradient(to right, #0a0a0a 1px, transparent 1px),
+    linear-gradient(to bottom, #0a0a0a 1px, transparent 1px);
+  background-size: 40px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  transition: opacity 0.5s ease;
+}
+
+.login-container.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.login-card {
+  width: 400px;
+  background: rgba(5, 5, 5, 0.9);
+  border: 1px solid var(--border-light);
+  padding: 40px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--success);
+  box-shadow: 0 0 10px var(--success);
+}
+
+.login-title {
+  font-family: var(--font-display);
+  font-size: 32px;
+  color: var(--text-main);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.login-subtitle {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 32px;
+  font-family: var(--font-mono);
+}
+
+.login-field {
+  margin-bottom: 20px;
+}
+
+.login-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  padding: 12px 0;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.login-input:focus {
+  border-color: var(--success);
+  box-shadow: 0 4px 10px -5px rgba(0, 255, 157, 0.1);
+}
+
+.login-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.btn-login {
+  width: 100%;
+  padding: 14px;
+  background: var(--success);
+  color: #000;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  border: none;
+  margin-top: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 1px;
+}
+
+.btn-login:hover {
+  background: #508b74;
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.3);
+}
