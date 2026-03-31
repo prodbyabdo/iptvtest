@@ -1,56 +1,34 @@
-# IPTV Pro Player - Desktop App
+# IPTV Pro Player
 
-A premium IPTV player built with Electron.
+A lightweight desktop IPTV client built with Electron. This player sidesteps common browser-based CORS issues and provides a native Windows environment for HLS streams.
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher)
+### Setup
+* **Node.js**: v18.x or higher required.
+* **Install**: `npm install`
+* **Dev Mode**: `npm start`
 
-### Installation
-
-1. **Install dependencies:**
-```bash
-npm install
-```
-
-2. **Run the app (development):**
-```bash
-npm start
-```
-
-3. **Build Windows installer:**
+### Windows Build
+To package the application into a portable installer:
 ```bash
 npm run build
 ```
+The output `.exe` will be generated in the `dist/` directory.
 
-The installer will be in the `dist/` folder.
+## Core Logic & Features
+* **CORS-Free Architecture**: Since this runs on Electron’s main process, it bypasses the `Access-Control-Allow-Origin` restrictions found in web-based players.
+* **Streaming**: Full HLS (.m3u8) support.
+* **Persistence**: Uses IndexedDB for local caching of playlists and EPG data to keep the UI snappy.
+* **VLC Bridge**: Includes the ability to hand off streams to a local VLC installation for advanced playback.
+* **UI**: Minimalist glassmorphism theme with a focus on high-density channel lists.
 
-## 📦 Build Output
+## Initial Config
+Launch the app and hit the **Settings** icon to link your provider. You’ll need:
+1.  Server URL (XC API or M3U)
+2.  Username/Password
 
-After running `npm run build`, you'll find:
-- `dist/IPTV Pro Player Setup 1.0.0.exe` - Windows installer
+*Note: All credentials are saved locally via Electron-store and are never transmitted to external third-party servers.*
 
-## 🎯 Features
-
-- No CORS issues (desktop app!)
-- HLS streaming support
-- Live TV, Movies, Series
-- Sports with live scores
-- Local caching (IndexedDB)
-- Export to M3U
-- VLC integration
-- Beautiful glassmorphism UI
-
-## ⚙️ Configuration
-
-On first launch, click the ⚙️ Settings button and enter:
-- IPTV Server URL
-- Username
-- Password
-
-Your credentials are stored locally and never sent anywhere except your IPTV server.
-
-## 📄 License
-
+## License
 MIT
