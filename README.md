@@ -1,8 +1,9 @@
 # IPTV Pro Player
 
 A lightweight desktop IPTV client built with Electron. This player sidesteps common browser-based CORS issues and provides a native Windows environment for HLS streams.
-[IMPORTANT]
-This application does not provide any content or streaming channels. Users must provide their own service credentials or use public repositories like [iptv-org](https://github.com/iptv-org/iptv) for free-to-air content.
+*[IMPORTANT]
+This application does not provide any content or streaming channels. Users must provide their own service credentials or use public repositories like
+[iptv-org](https://github.com/iptv-org/iptv) for free-to-air content.*
 ## Quick Start
 
 ### Setup
