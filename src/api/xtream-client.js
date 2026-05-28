@@ -7,7 +7,7 @@ export class XtreamClient {
     this.onLog = onLog;
     this.onError = onError;
     this.memCache = new Map();
-    
+
     // Default Config template
     this.config = {
       url: Storage.read("xtream_url"),
@@ -15,7 +15,7 @@ export class XtreamClient {
       pass: Storage.read("xtream_pass"),
       proxyUrl: "http://localhost:8000",
       useProxy: false,
-      _proxyChecked: false
+      _proxyChecked: false,
     };
   }
 
@@ -25,7 +25,7 @@ export class XtreamClient {
 
   baseUrl() {
     let url = this.config.url.trim().replace(/\/$/, "");
-    if (url.includes('player_api.php')) return url;
+    if (url.includes("player_api.php")) return url;
     return `${url}/player_api.php`;
   }
 
@@ -34,10 +34,16 @@ export class XtreamClient {
     try {
       const ctrl = new AbortController();
       setTimeout(() => ctrl.abort(), 3000);
-      const res = await fetch(`${this.config.proxyUrl}/health`, { mode: 'cors', signal: ctrl.signal });
+      const res = await fetch(`${this.config.proxyUrl}/health`, {
+        mode: "cors",
+        signal: ctrl.signal,
+      });
       if (res.ok) {
         this.config.useProxy = true;
-        this.onLog("Local Proxy Server detected! CORS and SSL issues bypassed.", "success");
+        this.onLog(
+          "Local Proxy Server detected! CORS and SSL issues bypassed.",
+          "success",
+        );
         return true;
       }
     } catch (e) {
@@ -50,7 +56,8 @@ export class XtreamClient {
     if (!this.config.url || !this.config.user) return null;
 
     // Check proxy once
-    if (!this.config.useProxy && !this.config._proxyChecked) await this.checkProxy();
+    if (!this.config.useProxy && !this.config._proxyChecked)
+      await this.checkProxy();
 
     // Try memory cache first for instant load
     if (cacheKey && this.memCache.has(cacheKey)) {
@@ -82,8 +89,11 @@ export class XtreamClient {
     const urlsToTry = [`${baseUrl}?${q}`];
     if (baseUrl.startsWith("https://")) {
       const httpUrl = baseUrl.replace("https://", "http://");
-      const hasPort = httpUrl.split('/')[2].includes(':');
-      if (!hasPort) urlsToTry.push(`${httpUrl.replace('/player_api.php', ':80/player_api.php')}?${q}`);
+      const hasPort = httpUrl.split("/")[2].includes(":");
+      if (!hasPort)
+        urlsToTry.push(
+          `${httpUrl.replace("/player_api.php", ":80/player_api.php")}?${q}`,
+        );
       urlsToTry.push(`${httpUrl}?${q}`);
     }
 
@@ -96,28 +106,57 @@ export class XtreamClient {
       // Log exactly what is being fetched, to assist debugging
       console.log(`Fetching (attempt ${i + 1}/${urlsToTry.length}):`, fetchUrl);
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds max
-        const res = await fetch(fetchUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!res.ok) {
-          if (res.status === 404 && i < urlsToTry.length - 1) {
-            this.onLog(`404 on attempt ${i + 1}, trying fallback...`, 'warning');
-            continue;
+      // Client-side retry helper for proxy errors
+      const executeFetch = async (retryOn500 = true) => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds max
+          const res = await fetch(fetchUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          if (!res.ok) {
+            if (res.status === 500 && retryOn500 && this.config.useProxy) {
+              console.warn("Proxy returned 500. Retrying once in 2s...");
+              await new Promise(r => setTimeout(r, 2000));
+              return await executeFetch(false);
+            }
+            if (res.status === 404 && i < urlsToTry.length - 1) {
+              this.onLog(
+                `404 on attempt ${i + 1}, trying fallback...`,
+                "warning",
+              );
+              return { fallbackNext: true };
+            }
+            throw new Error(`HTTP Error: ${res.status}`);
           }
-          throw new Error(`HTTP Error: ${res.status}`);
+          
+          console.log(`[ADVANCED LOG] network response OK. Parsing JSON...`);
+          const data = await res.json();
+          return { data };
+        } catch (e) {
+          throw e;
         }
-        console.log(`[ADVANCED LOG] network response OK. Parsing JSON...`);
-        const data = await res.json();
-        console.log(`[ADVANCED LOG] parsed JSON successfully. Result is Array?`, Array.isArray(data), `Length:`, data.length || 0);
+      };
+
+      try {
+        const result = await executeFetch(true);
+        if (result && result.fallbackNext) {
+          continue;
+        }
+        const data = result.data;
+        console.log(
+          `[ADVANCED LOG] parsed JSON successfully. Result is Array?`,
+          Array.isArray(data),
+          `Length:`,
+          data.length || 0,
+        );
 
         // If fallback worked, save the working URL
         if (i > 0) {
-          const workedUrl = rawUrl.split('/player_api.php')[0];
-          this.onLog(`Switching to working URL: ${workedUrl}`, 'success');
+          const workedUrl = rawUrl.split("/player_api.php")[0];
+          this.onLog(`Switching to working URL: ${workedUrl}`, "success");
           this.config.url = workedUrl;
-          Storage.store('xtream_url', workedUrl);
+          Storage.store("xtream_url", workedUrl);
         }
 
         if (cacheKey && Array.isArray(data) && data.length > 0) {
@@ -127,14 +166,20 @@ export class XtreamClient {
         }
         return data;
       } catch (e) {
-        if (i < urlsToTry.length - 1) { continue; }
+        if (i < urlsToTry.length - 1) {
+          continue;
+        }
         console.error(e);
         if (e.name === "AbortError") {
-          this.onError("Request timed out after 15s. Check network or proxy.");
-        } else if (e.message?.includes("Failed to fetch")) {
-          this.onError("Connection Failed. Check URL or CORS.");
+          this.onError("Request timed out after 15s. The IPTV server or proxy is slow — try again.");
+        } else if (e.message?.includes("Failed to fetch") || e.message?.includes("fetch")) {
+          if (this.config.useProxy) {
+            this.onError("Cannot reach local proxy server. Make sure server.py is running.");
+          } else {
+            this.onError("Connection Failed. Check URL or CORS security controls.");
+          }
         } else {
-          this.onError("API Error: " + (e.message || "Unknown error"));
+          this.onError("IPTV API Error: " + (e.message || "Unknown error"));
         }
         return null;
       }
@@ -170,7 +215,8 @@ export class XtreamClient {
     let base = this.config.url.replace(/\/$/, "");
     if (!base.startsWith("http")) base = "http://" + base;
     let url = `${base}/series/${this.config.user}/${this.config.pass}/${episodeId}.${ext}`;
-    if (this.config.useProxy) url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+    if (this.config.useProxy)
+      url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
     return url;
   }
 
@@ -178,15 +224,26 @@ export class XtreamClient {
     let base = this.config.url.replace(/\/$/, "");
     if (!base.startsWith("http")) base = "http://" + base;
     let url;
-    if (type === "live") url = `${base}/live/${this.config.user}/${this.config.pass}/${id}.m3u8`;
-    else if (type === "movies") url = `${base}/movie/${this.config.user}/${this.config.pass}/${id}.mkv`;
-    else url = `${base}/series/${this.config.user}/${this.config.pass}/${id}.mkv`;
-    
-    if (this.config.useProxy) url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+    if (type === "live")
+      url = `${base}/live/${this.config.user}/${this.config.pass}/${id}.m3u8`;
+    else if (type === "movies")
+      url = `${base}/movie/${this.config.user}/${this.config.pass}/${id}.mkv`;
+    else
+      url = `${base}/series/${this.config.user}/${this.config.pass}/${id}.mkv`;
+
+    if (this.config.useProxy)
+      url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
     return url;
   }
 
-  static async testConnection(url, user, pass, proxyUrl = "http://localhost:8000", useProxy = false, onLog = console.log) {
+  static async testConnection(
+    url,
+    user,
+    pass,
+    proxyUrl = "http://localhost:8000",
+    useProxy = false,
+    onLog = console.log,
+  ) {
     let cleanUrl = url.replace(/\/$/, "");
     if (!cleanUrl.startsWith("http")) cleanUrl = "http://" + cleanUrl;
 
@@ -197,7 +254,8 @@ export class XtreamClient {
     });
 
     let fetchUrl = `${cleanUrl}/player_api.php?${q}`;
-    if (useProxy) fetchUrl = `${proxyUrl}/proxy?url=${encodeURIComponent(fetchUrl)}`;
+    if (useProxy)
+      fetchUrl = `${proxyUrl}/proxy?url=${encodeURIComponent(fetchUrl)}`;
 
     try {
       const controller = new AbortController();
@@ -205,12 +263,12 @@ export class XtreamClient {
       const res = await fetch(fetchUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
       if (!res.ok) {
-        onLog(`HTTP Error: ${res.status} ${res.statusText}`, 'error');
+        onLog(`HTTP Error: ${res.status} ${res.statusText}`, "error");
         return { success: false, msg: `HTTP ${res.status}` };
       }
-      onLog('API Response received. Parsing JSON...');
+      onLog("API Response received. Parsing JSON...");
       await res.json();
-      onLog('Connection Verified!', 'success');
+      onLog("Connection Verified!", "success");
       return { success: true };
     } catch (e) {
       if (e.name === "AbortError") return { success: false, msg: "Timeout" };

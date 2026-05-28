@@ -50,3 +50,6 @@ football-data.org*.html
 .gemini/
 
 junk/
+
+# Private error logs exposing credentials
+context/errors.md

@@ -69,7 +69,9 @@ export class AppEngine {
   }
 
   logout() {
-    localStorage.clear();
+    Storage.store("xtream_url", "");
+    Storage.store("xtream_user", "");
+    Storage.store("xtream_pass", "");
     appState.data.isLoggedIn = false;
   }
 

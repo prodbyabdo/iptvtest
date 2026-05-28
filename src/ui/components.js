@@ -35,7 +35,6 @@ export const UIComponents = {
   log: (msg, type = 'info') => {
     const box = document.getElementById('debugLog');
     if (!box) return;
-    box.classList.add('active');
     const time = new Date().toLocaleTimeString();
     const div = document.createElement('div');
     div.className = `log-entry ${type}`;

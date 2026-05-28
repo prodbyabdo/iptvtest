@@ -27,7 +27,7 @@ PROXY_ALLOWED_DOMAINS = [
     "www.thesportsdb.com",
     "thesportsdb.com",
     "crests.football-data.org",
-],
+]
 
 # CORS: restrict to localhost origins
 ALLOWED_ORIGINS = [
@@ -35,6 +35,20 @@ ALLOWED_ORIGINS = [
     f"http://127.0.0.1:{PORT}",
     "null",  # file:// protocol sends Origin: null
 ]
+
+# Set up a requests Session with robust retry logic (5 retries with exponential backoff)
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+session = requests.Session()
+retries = Retry(
+    total=5,
+    backoff_factor=0.5,
+    status_forcelist=[500, 502, 503, 504],
+    raise_on_status=False
+)
+session.mount('http://', HTTPAdapter(max_retries=retries))
+session.mount('https://', HTTPAdapter(max_retries=retries))
 
 class ScanDelegate:
     def __init__(self):
@@ -58,6 +72,7 @@ def discover_devices(timeout=3):
     SSDP_PORT = 1900
     SSDP_MX = 1
     SSDP_ST = "urn:schemas-upnp-org:service:AVTransport:1"
+
 
     ssdpRequest = "M-SEARCH * HTTP/1.1\r\n" + \
                   f"HOST: {SSDP_ADDR}:{SSDP_PORT}\r\n" + \
@@ -319,9 +334,9 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                     ua = self.headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
                     target_headers = {'User-Agent': ua}
                     
-                    # Added verify=False to bypass net::ERR_CERT_AUTHORITY_INVALID
-                    # Added timeout and stream=True for large payloads
-                    resp = requests.get(target_url, headers=target_headers, stream=True, timeout=15, verify=False)
+                    # Use session instead of requests directly to leverage retries + verify=False
+                    # Increased timeout to 30 seconds to support larger payloads
+                    resp = session.get(target_url, headers=target_headers, stream=True, timeout=30, verify=False)
                     
                     self.send_response(resp.status_code)
                     self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
@@ -336,23 +351,30 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                     
                     total_bytes = 0
                     first_chunk = None
-                    for chunk in resp.iter_content(chunk_size=128*1024):
-                         if not chunk: break
-                         if first_chunk is None: 
-                             first_chunk = chunk[:200]
-                         self.wfile.write(b"%X\r\n" % len(chunk))
-                         self.wfile.write(chunk)
-                         self.wfile.write(b"\r\n")
-                         total_bytes += len(chunk)
-                    
-                    self.wfile.write(b"0\r\n\r\n")
+                    try:
+                        for chunk in resp.iter_content(chunk_size=128*1024):
+                             if not chunk: break
+                             if first_chunk is None: 
+                                 first_chunk = chunk[:200]
+                             self.wfile.write(b"%X\r\n" % len(chunk))
+                             self.wfile.write(chunk)
+                             self.wfile.write(b"\r\n")
+                             total_bytes += len(chunk)
+                        
+                        self.wfile.write(b"0\r\n\r\n")
+                    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as conn_err:
+                        print(f"Client disconnected during chunked streaming: {conn_err}")
+                        return # Clean return to prevent double fault
                     
                     print(f"Proxy response: {resp.status_code}, length: {total_bytes} bytes")
                     if first_chunk:
                         print(f"Response preview: {first_chunk.decode('utf-8', errors='ignore')[:150]}")
                 except Exception as e:
                     print(f"Proxy error for {target_url}: {e}")
-                    self.send_error(500, str(e))
+                    try:
+                        self.send_error(500, str(e))
+                    except Exception:
+                        pass # Ignore errors trying to write to a closed client socket
             else:
                 self.send_error(400)
             return

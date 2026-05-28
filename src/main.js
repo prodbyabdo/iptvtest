@@ -84,6 +84,10 @@ class App {
   showLogin() {
     this.els.loginPage.classList.remove("hidden");
     this.els.mainApp.classList.add("hidden");
+    // Pre-fill login credentials if they exist in storage
+    document.getElementById("loginUrl").value = Storage.read("xtream_url");
+    document.getElementById("loginUser").value = Storage.read("xtream_user");
+    document.getElementById("loginPass").value = Storage.read("xtream_pass");
   }
 
   async showApp() {
@@ -110,6 +114,8 @@ class App {
       { type: 'series', label: 'Series', stepId: 'step-series' },
     ];
 
+    let failures = [];
+
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       bar.style.width = Math.round((i / steps.length) * 100) + '%';
@@ -131,6 +137,7 @@ class App {
         console.error(`[ADVANCED LOG] error fetching categories for: ${step.type}`, e);
         stepEl.textContent = `✗ ${step.label}`;
         stepEl.style.color = 'var(--error)';
+        failures.push(step.label);
       }
     }
 
@@ -138,6 +145,12 @@ class App {
     title.textContent = 'Ready!';
     status.textContent = 'All playlists loaded.';
     setTimeout(() => overlay.style.display = 'none', 500);
+
+    if (failures.length > 0) {
+      setTimeout(() => {
+        UIComponents.toast(`Could not load: ${failures.join(", ")}. Checking server.py is recommended.`, "error");
+      }, 600);
+    }
 
     this.switchTab("live", document.querySelector('.nav-tab[data-tab="live"]'));
   }
@@ -178,7 +191,16 @@ class App {
     this.els.search.oninput = UIComponents.debounce((e) => this.engine.searchItems(e.target.value), 300);
 
     // Settings
-    document.getElementById("settingsTrigger").onclick = () => document.getElementById("settingsPanel").classList.add("active");
+    document.getElementById("settingsTrigger").onclick = () => {
+      // Pre-fill settings fields from localStorage when panel is opened
+      document.getElementById("set_url").value = Storage.read("xtream_url");
+      document.getElementById("set_user").value = Storage.read("xtream_user");
+      document.getElementById("set_pass").value = Storage.read("xtream_pass");
+      document.getElementById("set_football").value = Storage.read("football_api_key");
+      document.getElementById("set_omdb").value = Storage.read("omdb_api_key");
+      
+      document.getElementById("settingsPanel").classList.add("active");
+    };
     document.getElementById("closeSettings").onclick = () => document.getElementById("settingsPanel").classList.remove("active");
     document.getElementById("saveSettings").onclick = () => {
       localStorage.setItem("xtream_url", document.getElementById("set_url").value);
