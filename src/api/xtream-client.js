@@ -129,9 +129,21 @@ export class XtreamClient {
             }
             throw new Error(`HTTP Error: ${res.status}`);
           }
+          console.log(`[ADVANCED LOG] network response OK. Reading text...`);
+          const text = await res.text();
+          let cleanedText = text.trim();
           
-          console.log(`[ADVANCED LOG] network response OK. Parsing JSON...`);
-          const data = await res.json();
+          // Regex match to extract only the valid outer array or object JSON structure
+          const arrayMatch = cleanedText.match(/\[[\s\S]*\]/);
+          const objectMatch = cleanedText.match(/\{[\s\S]*\}/);
+          
+          if (arrayMatch) {
+            cleanedText = arrayMatch[0];
+          } else if (objectMatch) {
+            cleanedText = objectMatch[0];
+          }
+          
+          const data = JSON.parse(cleanedText);
           return { data };
         } catch (e) {
           throw e;
@@ -170,6 +182,8 @@ export class XtreamClient {
           continue;
         }
         console.error(e);
+        // Suppress individual toast popups at the API level. High-level UI operations (like prefetchAll) handle these.
+        /*
         if (e.name === "AbortError") {
           this.onError("Request timed out after 15s. The IPTV server or proxy is slow — try again.");
         } else if (e.message?.includes("Failed to fetch") || e.message?.includes("fetch")) {
@@ -181,6 +195,7 @@ export class XtreamClient {
         } else {
           this.onError("IPTV API Error: " + (e.message || "Unknown error"));
         }
+        */
         return null;
       }
     }
@@ -267,7 +282,19 @@ export class XtreamClient {
         return { success: false, msg: `HTTP ${res.status}` };
       }
       onLog("API Response received. Parsing JSON...");
-      await res.json();
+      const text = await res.text();
+      let cleanedText = text.trim();
+      
+      const arrayMatch = cleanedText.match(/\[[\s\S]*\]/);
+      const objectMatch = cleanedText.match(/\{[\s\S]*\}/);
+      
+      if (arrayMatch) {
+        cleanedText = arrayMatch[0];
+      } else if (objectMatch) {
+        cleanedText = objectMatch[0];
+      }
+      
+      JSON.parse(cleanedText);
       onLog("Connection Verified!", "success");
       return { success: true };
     } catch (e) {

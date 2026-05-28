@@ -44,7 +44,7 @@
   color: var(--text-secondary);
   overflow-y: auto;
   z-index: 9999;
-  display: block; /* Always visible for user feedback */
+  display: none; /* Hidden by default */
 }
 
 .debug-box:empty::before {
