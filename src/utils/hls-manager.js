@@ -7,16 +7,23 @@ export class HlsManager {
     this.callbacks = callbacks; // { onError, onReady }
   }
 
-  play(url) {
+  play(url, onFatalError = null) {
     this.destroy(); // Ensure any existing instance is cleaned up
 
-    if (url.includes(".m3u8")) {
-      // HLS stream
+    const isHls = url.includes(".m3u8");
+    const isTs = url.includes(".ts");
+
+    if (isHls || isTs || (window.Hls && Hls.isSupported())) {
+      // HLS stream, TS stream, or any URL — always try HLS.js first for live/stream URLs
       if (window.Hls && Hls.isSupported()) {
         this.hls = new Hls({
           debug: false,
           enableWorker: true,
           lowLatencyMode: true,
+          // More lenient error recovery for IPTV streams
+          manifestLoadingMaxRetry: 3,
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingMaxRetry: 3,
         });
 
         this.hls.loadSource(url);
@@ -37,15 +44,26 @@ export class HlsManager {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                if (this.callbacks.onError) this.callbacks.onError("network_error");
+                // Try calling the fallback before giving up
+                if (onFatalError) {
+                  this.destroy();
+                  onFatalError();
+                } else if (this.callbacks.onError) {
+                  this.callbacks.onError("network_error");
+                }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
                 if (this.callbacks.onError) this.callbacks.onError("media_error_recovering");
                 this.hls.recoverMediaError();
                 break;
               default:
-                if (this.callbacks.onError) this.callbacks.onError("fatal_error");
-                this.destroy();
+                if (onFatalError) {
+                  this.destroy();
+                  onFatalError();
+                } else {
+                  if (this.callbacks.onError) this.callbacks.onError("fatal_error");
+                  this.destroy();
+                }
                 break;
             }
           }
@@ -59,7 +77,13 @@ export class HlsManager {
         });
         if (this.callbacks.onReady) this.callbacks.onReady();
       } else {
-        if (this.callbacks.onError) this.callbacks.onError("not_supported");
+        // Fallback to direct play
+        this.video.src = url;
+        this.video.play().catch((e) => {
+          console.error("Play Error:", e);
+          if (this.callbacks.onError) this.callbacks.onError("direct_play_error");
+        });
+        if (this.callbacks.onReady) this.callbacks.onReady();
       }
     } else {
       // Direct video file (mp4, mkv, etc.)

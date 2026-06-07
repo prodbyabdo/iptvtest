@@ -1,8 +1,8 @@
 /* ========================= GRID ========================= */
 .media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
   padding-bottom: 100px;
   /* Space for bottom elements */
 }
@@ -24,9 +24,12 @@
   /* Landscape for Live TV */
 }
 
-.media-card:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+.media-card:hover,
+.media-card:focus,
+.media-card:focus-visible {
+  outline: none;
+  transform: translateY(-6px) scale(1.04);
+  box-shadow: 0 0 25px rgba(0, 255, 157, 0.25);
   border-color: var(--accent);
   z-index: 10;
 }
@@ -39,7 +42,9 @@
   transition: transform 0.5s;
 }
 
-.media-card:hover .media-poster {
+.media-card:hover .media-poster,
+.media-card:focus .media-poster,
+.media-card:focus-visible .media-poster {
   transform: scale(1.05);
 }
 
@@ -55,7 +60,9 @@
   transition: all 0.3s;
 }
 
-.media-card:hover .media-overlay {
+.media-card:hover .media-overlay,
+.media-card:focus .media-overlay,
+.media-card:focus-visible .media-overlay {
   transform: translateY(0);
   opacity: 1;
 }
@@ -101,7 +108,10 @@
   z-index: 20;
 }
 
-.media-card:hover .item-actions {
+.media-card:hover .item-actions,
+.media-card:focus .item-actions,
+.media-card:focus-within .item-actions,
+.media-card:focus-visible .item-actions {
   opacity: 1;
 }
 

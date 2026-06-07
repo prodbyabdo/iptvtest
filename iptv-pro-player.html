@@ -45,17 +45,17 @@
 
     <!-- Login Page -->
     <section class="login-container" id="loginPage">
-      <div class="login-card">
+      <form class="login-card" id="loginForm">
         <h1 class="login-title">IPTV Pro</h1>
         <p class="login-subtitle">SECURE TERMINAL ACCESS v2.0</p>
         <div class="login-field"><input type="text" class="login-input" id="loginUrl" placeholder="SERVER URL (http://...)" autocomplete="off" /></div>
         <div class="login-field"><input type="text" class="login-input" id="loginUser" placeholder="USERNAME" autocomplete="off" /></div>
-        <div class="login-field"><input type="password" class="login-input" id="loginPass" placeholder="PASSWORD" /></div>
-        <button class="btn-login" id="doLogin">Connect_</button>
+        <div class="login-field"><input type="password" class="login-input" id="loginPass" placeholder="PASSWORD" autocomplete="current-password" /></div>
+        <button type="submit" class="btn-login" id="doLogin">Connect_</button>
         <div style="margin-top: 24px; font-size: 10px; color: var(--text-muted); text-align: center; font-family: var(--font-mono);">
           ENCRYPTED CONNECTION // NO LOGS
         </div>
-      </div>
+      </form>
     </section>
 
     <!-- Debug Log -->
@@ -148,28 +148,30 @@
         <h2>Settings</h2>
         <button class="player-close" id="closeSettings">✕</button>
       </div>
-      <div class="setting-group">
-        <label class="setting-label">IPTV Server URL</label>
-        <input id="set_url" type="text" class="setting-field" placeholder="http://domain.com:port" />
-      </div>
-      <div class="setting-group">
-        <label class="setting-label">Username</label>
-        <input id="set_user" type="text" class="setting-field" />
-      </div>
-      <div class="setting-group">
-        <label class="setting-label">Password</label>
-        <input id="set_pass" type="password" class="setting-field" />
-      </div>
-      <hr style="border: 0; border-top: 1px solid var(--border-light); margin: 24px 0;" />
-      <div class="setting-group">
-        <label class="setting-label">Football API (RapidAPI)</label>
-        <input id="set_football" type="password" class="setting-field" placeholder="API Key" />
-      </div>
-      <div class="setting-group">
-        <label class="setting-label">OMDb API</label>
-        <input id="set_omdb" type="password" class="setting-field" placeholder="API Key" />
-      </div>
-      <button class="btn-primary" id="saveSettings">Save Configuration</button>
+      <form id="settingsForm">
+        <div class="setting-group">
+          <label class="setting-label">IPTV Server URL</label>
+          <input id="set_url" type="text" class="setting-field" placeholder="http://domain.com:port" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Username</label>
+          <input id="set_user" type="text" class="setting-field" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Password</label>
+          <input id="set_pass" type="password" class="setting-field" autocomplete="current-password" />
+        </div>
+        <hr style="border: 0; border-top: 1px solid var(--border-light); margin: 24px 0;" />
+        <div class="setting-group">
+          <label class="setting-label">Football API (RapidAPI)</label>
+          <input id="set_football" type="password" class="setting-field" placeholder="API Key" autocomplete="new-password" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">OMDb API</label>
+          <input id="set_omdb" type="password" class="setting-field" placeholder="API Key" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn-primary" id="saveSettings">Save Configuration</button>
+      </form>
     </div>
 
 

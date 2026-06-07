@@ -2,9 +2,10 @@
 import { UIComponents } from "./components.js";
 
 export class GridRenderer {
-  constructor(gridElement, callbacks = {}) {
+  constructor(gridElement, callbacks = {}, apiRef = null) {
     this.grid = gridElement;
     this.callbacks = callbacks;
+    this.api = apiRef; // optional: used for image proxying
   }
 
   render(items, currentTab, favoritesCheckFn) {
@@ -22,14 +23,20 @@ export class GridRenderer {
       const card = document.createElement("div");
       const isLandscape = currentTab === "live" || currentTab === "sports";
       card.className = `media-card ${isLandscape ? "landscape" : ""}`;
+      card.tabIndex = 0; // Make focusable for TV remote/keyboard navigation
 
       let imgUrl = item.stream_icon || item.cover || item.logo || item.poster || item.img || item.screenshot || "";
       imgUrl = UIComponents.validateImageUrl(imgUrl);
 
+      // Proxy image through local server to fix DNS failures for IPTV CDN icons
+      if (imgUrl && this.api) imgUrl = this.api.proxyImageUrl(imgUrl);
+
+      const fallbackUrl = isLandscape
+        ? `https://placehold.co/300x169/0a0a0a/525252?text=No+Image`
+        : `https://placehold.co/300x450/0a0a0a/525252?text=No+Image`;
+
       if (!imgUrl) {
-        const typeArr = isLandscape ? "300x169" : "300x450";
-        const placeholderText = encodeURIComponent((item.name || "No Image").substring(0, 15));
-        imgUrl = `https://placehold.co/${typeArr}/0a0a0a/525252?text=${placeholderText}`;
+        imgUrl = fallbackUrl;
       }
 
       const isFav = favoritesCheckFn ? favoritesCheckFn(item) : false;
@@ -42,7 +49,7 @@ export class GridRenderer {
           <button class="item-btn" data-action="copy" title="Copy Link">📋</button>
           <button class="item-btn" data-action="download" title="Download">⬇️</button>
         </div>
-        <img class="media-poster" src="${UIComponents.esc(imgUrl)}" loading="lazy" onerror="this.onerror=null; this.src='https://placehold.co/300x450/0a0a0a/525252?text=No+Image'">
+        <img class="media-poster" src="${UIComponents.esc(imgUrl)}" loading="lazy" onerror="this.onerror=null; this.src='${fallbackUrl}'">
         <div class="media-overlay">
           <div class="media-title">${UIComponents.esc(item.name || item.title)}</div>
           <div class="media-meta">
@@ -65,6 +72,13 @@ export class GridRenderer {
 
       card.querySelector(".media-poster").onclick = onClick;
       card.querySelector(".media-overlay").onclick = onClick;
+
+      card.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onClick();
+        }
+      };
 
       card.querySelector('[data-action="fav"]').onclick = (e) => {
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();

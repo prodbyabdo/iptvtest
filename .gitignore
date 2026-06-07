@@ -6,6 +6,8 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+.github/
+.agents/
 
 # IPTV playlists (contain personal server URLs/credentials)
 *.m3u

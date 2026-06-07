@@ -106,44 +106,30 @@ export class XtreamClient {
       // Log exactly what is being fetched, to assist debugging
       console.log(`Fetching (attempt ${i + 1}/${urlsToTry.length}):`, fetchUrl);
 
-      // Client-side retry helper for proxy errors
       const executeFetch = async (retryOn500 = true) => {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds max
           const res = await fetch(fetchUrl, { signal: controller.signal });
           clearTimeout(timeoutId);
-          
+
           if (!res.ok) {
             if (res.status === 500 && retryOn500 && this.config.useProxy) {
               console.warn("Proxy returned 500. Retrying once in 2s...");
-              await new Promise(r => setTimeout(r, 2000));
+              await new Promise((r) => setTimeout(r, 2000));
               return await executeFetch(false);
             }
             if (res.status === 404 && i < urlsToTry.length - 1) {
-              this.onLog(
-                `404 on attempt ${i + 1}, trying fallback...`,
-                "warning",
-              );
+              this.onLog(`404 on attempt ${i + 1}, trying fallback...`, "warning");
               return { fallbackNext: true };
             }
             throw new Error(`HTTP Error: ${res.status}`);
           }
-          console.log(`[ADVANCED LOG] network response OK. Reading text...`);
-          const text = await res.text();
-          let cleanedText = text.trim();
+          console.log(`[ADVANCED LOG] network response OK. Parsing JSON natively...`);
           
-          // Regex match to extract only the valid outer array or object JSON structure
-          const arrayMatch = cleanedText.match(/\[[\s\S]*\]/);
-          const objectMatch = cleanedText.match(/\{[\s\S]*\}/);
-          
-          if (arrayMatch) {
-            cleanedText = arrayMatch[0];
-          } else if (objectMatch) {
-            cleanedText = objectMatch[0];
-          }
-          
-          const data = JSON.parse(cleanedText);
+          // Use native json() parser which handles chunking and encodings much better
+          // than manual text replacing.
+          const data = await res.json();
           return { data };
         } catch (e) {
           throw e;
@@ -235,16 +221,25 @@ export class XtreamClient {
     return url;
   }
 
-  constructStreamUrl(id, type) {
+  proxyImageUrl(url) {
+    if (!url || !this.config.useProxy) return url;
+    // Route image through local proxy to bypass DNS issues with IPTV icon CDNs
+    return `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+  }
+
+  constructStreamUrl(id, type, ext = null) {
     let base = this.config.url.replace(/\/$/, "");
     if (!base.startsWith("http")) base = "http://" + base;
     let url;
-    if (type === "live")
-      url = `${base}/live/${this.config.user}/${this.config.pass}/${id}.m3u8`;
-    else if (type === "movies")
-      url = `${base}/movie/${this.config.user}/${this.config.pass}/${id}.mkv`;
-    else
-      url = `${base}/series/${this.config.user}/${this.config.pass}/${id}.mkv`;
+    if (type === "live") {
+      // Live channels are HLS streams — use m3u8 so HLS.js can play them
+      const liveExt = ext || "m3u8";
+      url = `${base}/live/${this.config.user}/${this.config.pass}/${id}.${liveExt}`;
+    } else if (type === "movies") {
+      url = `${base}/movie/${this.config.user}/${this.config.pass}/${id}.${ext || "mkv"}`;
+    } else {
+      url = `${base}/series/${this.config.user}/${this.config.pass}/${id}.${ext || "mkv"}`;
+    }
 
     if (this.config.useProxy)
       url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
@@ -284,17 +279,27 @@ export class XtreamClient {
       onLog("API Response received. Parsing JSON...");
       const text = await res.text();
       let cleanedText = text.trim();
-      
+
       const arrayMatch = cleanedText.match(/\[[\s\S]*\]/);
       const objectMatch = cleanedText.match(/\{[\s\S]*\}/);
-      
+
       if (arrayMatch) {
         cleanedText = arrayMatch[0];
       } else if (objectMatch) {
         cleanedText = objectMatch[0];
       }
-      
-      JSON.parse(cleanedText);
+
+      const sanitizedText = cleanedText
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+        .replace(/[\t\r\n]/g, " "); // \n inside JSON strings is invalid
+      try {
+        JSON.parse(sanitizedText);
+      } catch {
+        const fixedText = sanitizedText
+          .replace(/,\s*([\]}])/g, "$1")
+          .replace(/[^\x20-\uFFFF]/g, "");
+        JSON.parse(fixedText);
+      }
       onLog("Connection Verified!", "success");
       return { success: true };
     } catch (e) {

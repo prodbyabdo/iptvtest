@@ -3,6 +3,7 @@ import { appState } from "./core/state.js";
 import { GridRenderer } from "./ui/render-grid.js";
 import { UIComponents } from "./ui/components.js";
 import { HlsManager } from "./utils/hls-manager.js";
+import { TizenHelper } from "./utils/tizen-helper.js";
 
 class App {
   constructor() {
@@ -44,7 +45,7 @@ class App {
           window.open(url, "_blank");
         }
       }
-    });
+    }, this.engine.api); // pass api ref for image proxying
 
     this.hlsManager = new HlsManager(this.els.video);
     this.init();
@@ -53,6 +54,9 @@ class App {
   async init() {
     this.bindEvents();
     this.bindState();
+
+    // Register Tizen TV keys if running in Tizen TV environment
+    TizenHelper.registerKeys();
 
     const isLoggedIn = await this.engine.init();
     if (isLoggedIn) {
@@ -156,26 +160,30 @@ class App {
   }
 
   bindEvents() {
-    // Login
-    document.getElementById("doLogin").onclick = async () => {
-      const url = document.getElementById("loginUrl").value.trim();
-      const user = document.getElementById("loginUser").value.trim();
-      const pass = document.getElementById("loginPass").value.trim();
-      if (!url || !user || !pass) return UIComponents.toast("Please fill all fields", "error");
-      
-      const btn = document.getElementById("doLogin");
-      const originalText = btn.innerText;
-      btn.innerText = "VERIFYING..."; btn.disabled = true;
-      
-      const result = await this.engine.login(url, user, pass);
-      if (result.success) {
-        UIComponents.toast("Connection Successful!", "success");
-        setTimeout(() => location.reload(), 500);
-      } else {
-        btn.innerText = originalText; btn.disabled = false;
-        UIComponents.toast(`Connection Failed: ${result.msg}`, "error");
-      }
-    };
+    // Login Form
+    const loginForm = document.getElementById("loginForm");
+    if (loginForm) {
+      loginForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const url = document.getElementById("loginUrl").value.trim();
+        const user = document.getElementById("loginUser").value.trim();
+        const pass = document.getElementById("loginPass").value.trim();
+        if (!url || !user || !pass) return UIComponents.toast("Please fill all fields", "error");
+
+        const btn = document.getElementById("doLogin");
+        const originalText = btn.innerText;
+        btn.innerText = "VERIFYING..."; btn.disabled = true;
+
+        const result = await this.engine.login(url, user, pass);
+        if (result.success) {
+          UIComponents.toast("Connection Successful!", "success");
+          setTimeout(() => location.reload(), 500);
+        } else {
+          btn.innerText = originalText; btn.disabled = false;
+          UIComponents.toast(`Connection Failed: ${result.msg}`, "error");
+        }
+      };
+    }
 
     document.getElementById("logoutBtn").onclick = () => {
       this.engine.logout();
@@ -198,43 +206,93 @@ class App {
       document.getElementById("set_pass").value = Storage.read("xtream_pass");
       document.getElementById("set_football").value = Storage.read("football_api_key");
       document.getElementById("set_omdb").value = Storage.read("omdb_api_key");
-      
+
       document.getElementById("settingsPanel").classList.add("active");
     };
     document.getElementById("closeSettings").onclick = () => document.getElementById("settingsPanel").classList.remove("active");
-    document.getElementById("saveSettings").onclick = () => {
-      localStorage.setItem("xtream_url", document.getElementById("set_url").value);
-      localStorage.setItem("xtream_user", document.getElementById("set_user").value);
-      localStorage.setItem("xtream_pass", document.getElementById("set_pass").value);
-      localStorage.setItem("football_api_key", document.getElementById("set_football").value);
-      localStorage.setItem("omdb_api_key", document.getElementById("set_omdb").value);
-      UIComponents.toast("Settings Saved. Reloading...");
-      setTimeout(() => location.reload(), 1000);
-    };
 
-    // Keyboard shortcuts
+    const settingsForm = document.getElementById("settingsForm");
+    if (settingsForm) {
+      settingsForm.onsubmit = (e) => {
+        e.preventDefault();
+        localStorage.setItem("xtream_url", document.getElementById("set_url").value);
+        localStorage.setItem("xtream_user", document.getElementById("set_user").value);
+        localStorage.setItem("xtream_pass", document.getElementById("set_pass").value);
+        localStorage.setItem("football_api_key", document.getElementById("set_football").value);
+        localStorage.setItem("omdb_api_key", document.getElementById("set_omdb").value);
+        UIComponents.toast("Settings Saved. Reloading...");
+        setTimeout(() => location.reload(), 1000);
+      };
+    }
+
+    // Keyboard & Tizen TV Remote shortcuts
     document.addEventListener("keydown", (e) => {
+      const keyCode = e.keyCode || e.which;
+      const key = e.key;
+
       if (this.els.player.classList.contains("active")) {
         const video = this.els.video;
-        switch (e.key) {
-          case " ": case "k": case "K": e.preventDefault(); video.paused ? video.play() : video.pause(); break;
-          case "ArrowLeft": e.preventDefault(); video.currentTime -= 10; break;
-          case "ArrowRight": e.preventDefault(); video.currentTime += 10; break;
-          case "ArrowUp": e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); break;
-          case "ArrowDown": e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); break;
-          case "f": case "F": e.preventDefault(); document.fullscreenElement ? document.exitFullscreen() : video.requestFullscreen(); break;
-          case "m": case "M": e.preventDefault(); video.muted = !video.muted; break;
-          case "Escape": e.preventDefault(); this.closePlayer(); break;
+
+        if (keyCode === 415) { // Tizen Media Play
+          e.preventDefault();
+          video.play().catch(console.error);
+        } else if (keyCode === 19) { // Tizen Media Pause
+          e.preventDefault();
+          video.pause();
+        } else if (keyCode === 413) { // Tizen Media Stop
+          e.preventDefault();
+          this.closePlayer();
+        } else if (keyCode === 417) { // Tizen Media Fast Forward
+          e.preventDefault();
+          video.currentTime += 10;
+        } else if (keyCode === 412) { // Tizen Media Rewind
+          e.preventDefault();
+          video.currentTime -= 10;
+        } else if (keyCode === 10009 || key === "Escape") { // Tizen Return/Back or Esc
+          e.preventDefault();
+          this.closePlayer();
+        } else {
+          switch (key) {
+            case " ": case "k": case "K": e.preventDefault(); video.paused ? video.play() : video.pause(); break;
+            case "ArrowLeft": e.preventDefault(); video.currentTime -= 10; break;
+            case "ArrowRight": e.preventDefault(); video.currentTime += 10; break;
+            case "ArrowUp": e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); break;
+            case "ArrowDown": e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); break;
+            case "f": case "F": e.preventDefault(); document.fullscreenElement ? document.exitFullscreen() : video.requestFullscreen(); break;
+            case "m": case "M": e.preventDefault(); video.muted = !video.muted; break;
+          }
         }
-      } else if (e.key === "Escape") {
-        document.getElementById("settingsPanel").classList.remove("active");
-        this.els.seriesModal.classList.remove("active");
+      } else {
+        if (keyCode === 10009 || key === "Escape") { // Tizen Return/Back or Esc
+          e.preventDefault();
+          const settings = document.getElementById("settingsPanel");
+          if (settings.classList.contains("active")) {
+            settings.classList.remove("active");
+          } else if (this.els.seriesModal.classList.contains("active")) {
+            this.els.seriesModal.classList.remove("active");
+          } else {
+            // Exit app if on Tizen TV
+            if (TizenHelper.isTizen()) {
+              TizenHelper.exitApp();
+            } else {
+              UIComponents.toast("Press Back again to exit (Not on TV)", "info");
+            }
+          }
+        }
       }
     });
 
     // Player Modal
     document.getElementById("closePlayer").onclick = () => this.closePlayer();
     document.getElementById("closeSeriesModal").onclick = () => this.els.seriesModal.classList.remove("active");
+
+    // Click to hide debug log popup
+    const debugBox = document.getElementById("debugLog");
+    if (debugBox) {
+      debugBox.onclick = () => {
+        debugBox.classList.remove("active");
+      };
+    }
   }
 
   async switchTab(tab, btn) {
@@ -305,7 +363,18 @@ class App {
     const url = this.engine.api.constructStreamUrl(id, tab);
     document.getElementById("playerTitle").innerText = item.name || item.title || "Unknown";
     this.els.player.classList.add("active");
-    this.hlsManager.play(url);
+    
+    // For live streams, try m3u8; if that errors fall back to ts
+    if (tab === "live") {
+      this.hlsManager.play(url, () => {
+        // m3u8 failed — try ts fallback
+        const tsUrl = this.engine.api.constructStreamUrl(id, tab, "ts");
+        UIComponents.log("m3u8 failed, trying .ts fallback...", "warning");
+        this.hlsManager.play(tsUrl);
+      });
+    } else {
+      this.hlsManager.play(url);
+    }
   }
 
   closePlayer() {

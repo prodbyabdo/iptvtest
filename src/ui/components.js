@@ -32,12 +32,21 @@ export const UIComponents = {
     const box = document.getElementById('debugLog');
     if (!box) return;
     box.classList.add('active');
+
+    if (UIComponents._logHideTimer) {
+      clearTimeout(UIComponents._logHideTimer);
+    }
+
     const time = new Date().toLocaleTimeString();
     const div = document.createElement('div');
     div.className = `log-entry ${type}`;
     div.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
+
+    UIComponents._logHideTimer = setTimeout(() => {
+      box.classList.remove('active');
+    }, 5000);
   },
 
   validateImageUrl: (url) => {

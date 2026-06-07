@@ -237,6 +237,18 @@ def cast_to_device(control_url, media_url):
 
 
 class PlayerHandler(http.server.SimpleHTTPRequestHandler):
+    # Use HTTP/1.1 so Transfer-Encoding: chunked is properly decoded by browsers.
+    # Without this, Python defaults to HTTP/1.0 where chunked encoding is not standard
+    # and browsers receive raw chunk-size bytes (e.g. "18C\r\n") in the response body.
+    # HLS.js fails with "no EXTM3U delimiter" because it sees the chunk header first.
+    protocol_version = "HTTP/1.1"
+
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def do_POST(self):
         if self.path == '/cast':
             content_length = int(self.headers['Content-Length'])
@@ -341,6 +353,7 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_response(resp.status_code)
                     self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
                     self.send_header('Transfer-Encoding', 'chunked')
+                    self.send_header('Connection', 'close')  # Required: HTTP/1.1 needs explicit close
                     
                     # Forward all headers from the target
                     for key, value in resp.headers.items():
