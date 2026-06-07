@@ -216,8 +216,7 @@ export class XtreamClient {
     let base = this.config.url.replace(/\/$/, "");
     if (!base.startsWith("http")) base = "http://" + base;
     let url = `${base}/series/${this.config.user}/${this.config.pass}/${episodeId}.${ext}`;
-    if (this.config.useProxy)
-      url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+    // Do not proxy episode streams as they are direct video files
     return url;
   }
 
@@ -241,8 +240,9 @@ export class XtreamClient {
       url = `${base}/series/${this.config.user}/${this.config.pass}/${id}.${ext || "mkv"}`;
     }
 
-    if (this.config.useProxy)
-      url = `${this.config.proxyUrl}/proxy?url=${encodeURIComponent(url)}`;
+    // We intentionally DO NOT proxy stream URLs because:
+    // 1. m3u8 playlists contain relative paths which break when proxied via ?url=
+    // 2. Video streams usually have CORS allowed by providers
     return url;
   }
 

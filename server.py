@@ -346,10 +346,45 @@ class PlayerHandler(http.server.SimpleHTTPRequestHandler):
                     ua = self.headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
                     target_headers = {'User-Agent': ua}
                     
-                    # Use session instead of requests directly to leverage retries + verify=False
-                    # Increased timeout to 30 seconds to support larger payloads
                     resp = session.get(target_url, headers=target_headers, stream=True, timeout=30, verify=False)
                     
+                    is_m3u8 = '.m3u8' in target_url or 'mpegurl' in resp.headers.get('content-type', '').lower()
+                    
+                    if is_m3u8:
+                        # For M3U8, we MUST read the whole file and rewrite relative URLs
+                        content = resp.content
+                        text = content.decode('utf-8', errors='ignore')
+                        from urllib.parse import quote, urljoin
+                        
+                        new_lines = []
+                        for line in text.splitlines():
+                            line_stripped = line.strip()
+                            if line_stripped and not line_stripped.startswith('#'):
+                                # It's a URL. If it's relative, make it absolute using target_url as base
+                                if not line_stripped.startswith('http'):
+                                    absolute_url = urljoin(target_url, line_stripped)
+                                else:
+                                    absolute_url = line_stripped
+                                
+                                # Now proxy the absolute URL
+                                proxied_url = f"/proxy?url={quote(absolute_url)}"
+                                new_lines.append(proxied_url)
+                            else:
+                                new_lines.append(line)
+                                
+                        new_content = '\n'.join(new_lines).encode('utf-8')
+                        
+                        self.send_response(resp.status_code)
+                        self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
+                        self.send_header('Content-Type', resp.headers.get('content-type', 'application/vnd.apple.mpegurl'))
+                        self.send_header('Content-Length', str(len(new_content)))
+                        self.send_header('Connection', 'close')
+                        self.end_headers()
+                        self.wfile.write(new_content)
+                        print(f"Proxy rewrote M3U8: length: {len(new_content)} bytes")
+                        return
+
+                    # For standard files (TS chunks, images, JSON), stream via chunked encoding
                     self.send_response(resp.status_code)
                     self.send_header('Access-Control-Allow-Origin', self._get_cors_origin())
                     self.send_header('Transfer-Encoding', 'chunked')
